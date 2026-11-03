@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Budget Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;700;800&family=Figtree:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{
+  --paper:#f6f1e7; --card:#fffdf8; --ink:#17201b; --muted:#5d6a62; --line:#ddd3bf;
+  --green:#14532d; --coral:#c2410c; --focus:#0a58ca; --on-green:#fff;
+  --c-food:#c2410c; --c-transport:#14532d; --c-bills:#9a6b00; --c-shopping:#1f6283; --c-health:#8a4b6f; --c-other:#4b5563;
+  --r-card:18px; --r-ctl:10px;
+  --e1:0 1px 0 rgba(23,32,27,.08); --e2:0 10px 30px -12px rgba(23,32,27,.28);
+}
+@media (prefers-color-scheme:dark){
+  :root{--paper:#111712; --card:#19211b; --ink:#f1ece0; --muted:#a3b0a7; --line:#2c372f; --green:#58c081; --coral:#ff8a70; --focus:#7db3ff; --on-green:#0b1a10;
+  --c-food:#e0634a; --c-transport:#3f9d66; --c-bills:#c9971a; --c-shopping:#3a8db3; --c-health:#b86a96; --c-other:#7c8594;}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 16px/1.5 'Figtree',Georgia,serif}
+h1,h2,.num{font-family:'Bricolage Grotesque',Georgia,serif}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.wrap{max-width:1100px;margin:0 auto;padding:24px 16px 64px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:28px}
+header h1{font-size:1.5rem;font-weight:800;margin:0;letter-spacing:-.02em}
+.btn{min-height:44px;padding:0 20px;border-radius:var(--r-ctl);border:1.5px solid var(--green);background:var(--green);color:var(--on-green);font-weight:600;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.field label{font-weight:600;font-size:.9rem}
+input,select{min-height:44px;padding:0 12px;border-radius:var(--r-ctl);border:1.5px solid var(--line);background:var(--card)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);padding:20px;box-shadow:var(--e1)}
+.hero{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-bottom:16px}
+.today{background:var(--green);color:var(--on-green);border-radius:28px 28px 28px 6px;padding:28px;box-shadow:var(--e2)}
+.today .lbl{font-weight:600}
+.today .num{font-size:clamp(2.8rem,9vw,5rem);font-weight:800;line-height:1;letter-spacing:-.03em;margin:6px 0}
+.biggest .lbl{color:var(--muted);font-weight:600;font-size:.9rem}
+.biggest .num{font-size:2rem;font-weight:800;margin:4px 0}
+.biggest .what{display:flex;gap:10px;align-items:center;font-weight:600}
+.grid{display:grid;grid-template-columns:1.5fr 1fr;gap:16px}
+.row2{margin-top:16px}
+h2{font-size:1.15rem;font-weight:700;margin:0 0 12px}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:6px 8px;border-bottom:1.5px solid var(--line)}
+td{padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+td.amt,th.amt{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.chip{display:inline-flex;align-items:center;gap:8px;font-weight:600}
+.ico{width:32px;height:32px;border-radius:9px;display:inline-grid;place-items:center;color:#fff;flex:none}
+.ico svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.pie{display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.pie svg{width:190px;height:190px;flex:none}
+.legend{list-style:none;margin:0;padding:0;display:grid;gap:6px;flex:1;min-width:150px}
+.legend li{display:flex;justify-content:space-between;gap:8px;font-size:.95rem}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:8px}
+.hint{color:var(--muted);font-size:.9rem}
+.msg{min-height:1.4em;font-size:.92rem;margin:8px 0 0}
+.msg.err{color:var(--coral)}
+.empty{color:var(--muted);padding:18px 4px}
+.auth{max-width:380px;margin:12vh auto}
+.auth h1{font-size:2.2rem;font-weight:800;letter-spacing:-.03em;margin:0 0 6px}
+.docs a{color:var(--green);font-weight:600}
+[hidden]{display:none!important}
+@media (max-width:760px){.hero,.grid{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:no-preference){
+  .today,.card{animation:rise .5s both}.card{animation-delay:.08s}
+  @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+}
+</style>
+</head>
+<body>
+<main class="wrap">
+
+<section id="app">
+  <header>
+    <h1>Budget Tracker</h1>
+    <span class="hint">Amounts in Kuwaiti dinar (KD)</span>
+  </header>
+
+  <div class="hero">
+    <div class="today">
+      <div class="lbl">Spent today</div>
+      <div class="num" id="todayTotal">0.000 KD</div>
+      <div id="todayCount"></div>
+    </div>
+    <div class="card biggest">
+      <div class="lbl">Biggest spend</div>
+      <div class="num" id="bigAmt">—</div>
+      <div class="what" id="bigWhat">Add an expense to see it here.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Add expenses</h2>
+    <form id="addForm" novalidate>
+      <div class="field">
+        <label for="quick">Type them in one line — separate with “·”</label>
+        <input id="quick" placeholder="Lunch at a café, 3.500 KD, Food · an Uber, 2.000 KD, Transport · the phone bill, 8.000 KD, Bills" autocomplete="off">
+      </div>
+      <button class="btn" type="submit">Add</button>
+      <p id="addMsg" class="msg" role="status"></p>
+    </form>
+  </div>
+
+  <div class="grid row2">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px">
+        <h2 style="margin:0">Expenses</h2>
+        <div class="field" style="margin:0;flex-direction:row;align-items:center">
+          <label for="catFilter">Category</label>
+          <select id="catFilter"><option value="">All</option></select>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>What</th><th>Category</th><th>Date</th><th class="amt">Amount</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <p id="empty" class="empty" hidden>No expenses yet.</p>
+    </div>
+    <div class="card">
+      <h2>By category</h2>
+      <div class="pie">
+        <svg id="pie" viewBox="-1 -1 2 2" role="img" aria-label="Spending by category"></svg>
+        <ul class="legend" id="legend"></ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="card row2 docs">
+    <h2>Invoices &amp; warranties</h2>
+    <form id="docForm" novalidate style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end">
+      <div class="field" style="margin:0"><label for="docKind">Type</label>
+        <select id="docKind"><option value="invoice">Invoice</option><option value="warranty">Warranty</option></select></div>
+      <div class="field" style="margin:0"><label for="docExpense">For expense</label>
+        <select id="docExpense"><option value="">None</option></select></div>
+      <div class="field" style="margin:0" id="untilWrap" hidden><label for="docUntil">Warranty until</label><input id="docUntil" type="date"></div>
+      <div class="field" style="margin:0"><label for="docFile">File (PDF or image, 10 MB max)</label>
+        <input id="docFile" type="file" accept="application/pdf,image/jpeg,image/png,image/webp"></div>
+      <button class="btn" type="submit">Upload</button>
+    </form>
+    <p id="docMsg" class="msg" role="status"></p>
+    <table style="margin-top:8px">
+      <thead><tr><th>Type</th><th>For</th><th>Warranty until</th><th>File</th></tr></thead>
+      <tbody id="docRows"></tbody>
+    </table>
+  </div>
+</section>
+</main>
+
+<script>
+const SUPABASE_URL='https://khvxpilusnfngivuvcru.supabase.co';
+const SUPABASE_KEY='sb_publishable_NNuoLm8mPwGx2NgfCaRG2g_J1o-9jAb';
+const BUCKET='invoices-warranties';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:false}});
+
+const CATS={
+  Food:{c:'--c-food',p:'M7 3v8M4 3v5a3 3 0 0 0 6 0V3M7 11v10M17 3c-2 2-3 5-3 8h3v10'},
+  Transport:{c:'--c-transport',p:'M5 16V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v8M3 16h18M7 20v-4M17 20v-4M8 11h.01M16 11h.01'},
+  Bills:{c:'--c-bills',p:'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6'},
+  Shopping:{c:'--c-shopping',p:'M5 8h14l-1 12H6zM9 8a3 3 0 0 1 6 0'},
+  Health:{c:'--c-health',p:'M12 21s-8-5-8-11a4.5 4.5 0 0 1 8-2.5A4.5 4.5 0 0 1 20 10c0 6-8 11-8 11z'},
+  Other:{c:'--c-other',p:'M12 6v.01M12 12v.01M12 18v.01'}
+};
+const NAMES=Object.keys(CATS);
+const $=id=>document.getElementById(id);
+const kd=n=>Number(n).toLocaleString('en',{minimumFractionDigits:3,maximumFractionDigits:3})+' KD';
+const todayStr=()=>{const d=new Date();return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const state={expenses:[],docs:[]};
+
+function icon(cat){
+  const m=CATS[cat]||CATS.Other,s=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  s.setAttribute('viewBox','0 0 24 24');s.setAttribute('aria-hidden','true');
+  const p=document.createElementNS('http://www.w3.org/2000/svg','path');p.setAttribute('d',m.p);s.append(p);
+  const w=document.createElement('span');w.className='ico';w.style.background=`var(${m.c})`;w.append(s);return w;
+}
+function chip(cat){const s=document.createElement('span');s.className='chip';s.append(icon(cat),document.createTextNode(cat));return s}
+function td(content,cls){const t=document.createElement('td');if(cls)t.className=cls;t.append(content);return t}
+
+function parseQuick(text){
+  const out=[],bad=[];
+  for(const part of text.split(/[·\n]/).map(s=>s.trim()).filter(Boolean)){
+    const bits=part.split(',').map(s=>s.trim());
+    const amtIdx=bits.findIndex(b=>/^\d+([.,]\d{1,3})?\s*(kd|kwd)?$/i.test(b));
+    if(amtIdx<1){bad.push(part);continue}
+    const amount=parseFloat(bits[amtIdx].replace(/[^\d.,]/g,'').replace(',','.'));
+    const rawCat=(bits[amtIdx+1]||'Other').toLowerCase();
+    const category=NAMES.find(n=>n.toLowerCase()===rawCat)||'Other';
+    const title=bits.slice(0,amtIdx).join(', ').slice(0,120);
+    if(!(amount>0)||!title){bad.push(part);continue}
+    out.push({title:title.charAt(0).toUpperCase()+title.slice(1),amount,category,spent_on:todayStr(),source:'web'});
+  }
+  return {out,bad};
+}
+
+async function load(){
+  const [e,d]=await Promise.all([
+    sb.from('expenses').select('*').order('spent_on',{ascending:false}).order('created_at',{ascending:false}),
+    sb.from('documents').select('*').order('created_at',{ascending:false})
+  ]);
+  if(e.error||d.error){$('addMsg').textContent='Could not load data. Please refresh.';$('addMsg').className='msg err';return}
+  state.expenses=e.data;state.docs=d.data;render();
+}
+
+function render(){
+  const filter=$('catFilter').value;
+  const list=state.expenses.filter(x=>!filter||x.category===filter);
+  const today=list.filter(x=>x.spent_on===todayStr());
+  $('todayTotal').textContent=kd(today.reduce((a,x)=>a+Number(x.amount),0));
+  $('todayCount').textContent=today.length?`${today.length} expense${today.length>1?'s':''} today${filter?' in '+filter:''}`:'Nothing spent yet today.';
+
+  const big=list.reduce((m,x)=>!m||Number(x.amount)>Number(m.amount)?x:m,null);
+  $('bigAmt').textContent=big?kd(big.amount):'—';
+  const bw=$('bigWhat');bw.replaceChildren();
+  if(big){bw.append(icon(big.category),document.createTextNode(`${big.title} · ${big.category}`))}else bw.textContent='Add an expense to see it here.';
+
+  const rows=$('rows');rows.replaceChildren();
+  for(const x of list){
+    const tr=document.createElement('tr');
+    tr.append(td(x.title),td(chip(x.category)),td(x.spent_on),td(kd(x.amount),'amt'));
+    rows.append(tr);
+  }
+  $('empty').hidden=list.length>0;
+  drawPie(list);
+
+  const sel=$('docExpense'),keep=sel.value;sel.replaceChildren(new Option('None',''));
+  for(const x of state.expenses.slice(0,50))sel.append(new Option(`${x.title} — ${kd(x.amount)}`,x.id));
+  sel.value=keep;
+  const dr=$('docRows');dr.replaceChildren();
+  for(const d of state.docs){
+    const ex=state.expenses.find(x=>x.id===d.expense_id);
+    const tr=document.createElement('tr');
+    const a=document.createElement('a');a.href='#';a.textContent='Open';a.addEventListener('click',ev=>{ev.preventDefault();openDoc(d.file_path)});
+    tr.append(td(d.kind==='invoice'?'Invoice':'Warranty'),td(ex?ex.title:'—'),td(d.warranty_until||'—'),td(a));
+    dr.append(tr);
+  }
+}
+
+function drawPie(list){
+  const svg=$('pie'),lg=$('legend');svg.replaceChildren();lg.replaceChildren();
+  const tot={};list.forEach(x=>tot[x.category]=(tot[x.category]||0)+Number(x.amount));
+  const sum=Object.values(tot).reduce((a,b)=>a+b,0);
+  if(!sum){lg.textContent='No data yet.';return}
+  let a0=-Math.PI/2;
+  const entries=Object.entries(tot).sort((a,b)=>b[1]-a[1]);
+  for(const [cat,v] of entries){
+    const frac=v/sum,col=css((CATS[cat]||CATS.Other).c);
+    let el;
+    if(entries.length===1){el=document.createElementNS('http://www.w3.org/2000/svg','circle');el.setAttribute('r','1');}
+    else{
+      const a1=a0+frac*2*Math.PI,large=frac>.5?1:0;
+      el=document.createElementNS('http://www.w3.org/2000/svg','path');
+      el.setAttribute('d',`M0 0L${Math.cos(a0)} ${Math.sin(a0)}A1 1 0 ${large} 1 ${Math.cos(a1)} ${Math.sin(a1)}Z`);
+      a0=a1;
+    }
+    el.setAttribute('fill',col);el.setAttribute('stroke',css('--card'));el.setAttribute('stroke-width','.03');
+    const t=document.createElementNS('http://www.w3.org/2000/svg','title');t.textContent=`${cat}: ${kd(v)}`;el.append(t);
+    svg.append(el);
+    const li=document.createElement('li'),i=document.createElement('i');i.style.background=col;
+    const l=document.createElement('span');l.append(i,document.createTextNode(`${cat} ${Math.round(frac*100)}%`));
+    const r=document.createElement('span');r.textContent=kd(v);li.append(l,r);lg.append(li);
+  }
+}
+
+async function openDoc(path){
+  const {data,error}=await sb.storage.from(BUCKET).createSignedUrl(path,60);
+  if(error){$('docMsg').textContent='Could not open the file.';$('docMsg').className='msg err';return}
+  window.open(data.signedUrl,'_blank','noopener');
+}
+
+$('addForm').addEventListener('submit',async ev=>{
+  ev.preventDefault();const m=$('addMsg');m.className='msg';
+  const {out,bad}=parseQuick($('quick').value);
+  if(!out.length){m.textContent='Use: what, amount KD, category — e.g. “Uber, 2.000 KD, Transport”.';m.className='msg err';return}
+  const {error}=await sb.from('expenses').insert(out);
+  if(error){m.textContent='Could not save. Please try again.';m.className='msg err';return}
+  $('quick').value='';
+  m.textContent=`Added ${out.length}.`+(bad.length?` Skipped: ${bad.join(' · ')}`:'');
+  load();
+});
+
+$('docKind').addEventListener('change',()=>{$('untilWrap').hidden=$('docKind').value!=='warranty'});
+$('docForm').addEventListener('submit',async ev=>{
+  ev.preventDefault();const m=$('docMsg');m.className='msg';
+  const f=$('docFile').files[0];
+  if(!f){m.textContent='Choose a file first.';m.className='msg err';return}
+  if(f.size>10*1024*1024){m.textContent='File is over 10 MB.';m.className='msg err';return}
+  const ext=(f.name.split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,5);
+  const path=`shared/${crypto.randomUUID()}.${ext}`;
+  const up=await sb.storage.from(BUCKET).upload(path,f,{contentType:f.type});
+  if(up.error){m.textContent='Upload failed. Check the file type.';m.className='msg err';return}
+  const kind=$('docKind').value;
+  const {error}=await sb.from('documents').insert({expense_id:$('docExpense').value||null,kind,file_path:path,warranty_until:kind==='warranty'?($('docUntil').value||null):null});
+  if(error){m.textContent='Saved the file but not its record.';m.className='msg err';return}
+  m.textContent='Uploaded.';$('docFile').value='';load();
+});
+
+$('catFilter').addEventListener('change',render);
+NAMES.forEach(n=>$('catFilter').append(new Option(n,n)));
+load();
+</script>
+</body>
+</html>
