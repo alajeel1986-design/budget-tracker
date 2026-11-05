@@ -56,6 +56,24 @@ td.amt,th.amt{text-align:right;font-variant-numeric:tabular-nums;font-weight:600
 .legend li{display:flex;justify-content:space-between;gap:8px;font-size:.95rem}
 .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:8px}
 .hint{color:var(--muted);font-size:.9rem}
+textarea{min-height:44px;padding:10px 12px;border-radius:var(--r-ctl);border:1.5px solid var(--line);background:var(--card);font:inherit;color:inherit;resize:vertical}
+.cats{display:flex;flex-wrap:wrap;gap:8px}
+.cat-btn{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 14px 0 6px;border-radius:999px;border:1.5px solid var(--line);background:var(--card);font-weight:600;cursor:pointer}
+.cat-btn:hover{border-color:var(--green)}
+.sr,.cat-name-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.icon-btn{width:44px;height:44px;border:0;background:transparent;border-radius:var(--r-ctl);color:var(--muted);cursor:pointer;display:inline-grid;place-items:center}
+.icon-btn:hover{color:var(--coral);background:var(--paper)}
+.icon-btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.when{display:none}
+.msg .btn{min-height:44px;margin-left:8px}
+.btn:disabled{opacity:.6;cursor:progress}
+tfoot td{font-weight:700;border-bottom:0;padding-top:12px}
+@media (max-width:560px){
+  thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .col-date{display:none}
+  .when{display:block}
+  .cat-name{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+}
 .msg{min-height:1.4em;font-size:.92rem;margin:8px 0 0}
 .msg.err{color:var(--coral)}
 .empty{color:var(--muted);padding:18px 4px}
@@ -103,7 +121,7 @@ td.amt,th.amt{text-align:right;font-variant-numeric:tabular-nums;font-weight:600
       <div id="todayCount"></div>
     </div>
     <div class="card biggest">
-      <div class="lbl">Biggest spend</div>
+      <div class="lbl" id="bigLbl">Biggest spend · all time</div>
       <div class="num" id="bigAmt">—</div>
       <div class="what" id="bigWhat">Add an expense to see it here.</div>
     </div>
@@ -113,10 +131,12 @@ td.amt,th.amt{text-align:right;font-variant-numeric:tabular-nums;font-weight:600
     <h2>Add expenses</h2>
     <form id="addForm" novalidate>
       <div class="field">
-        <label for="quick">Type them in one line — separate with “·”</label>
-        <input id="quick" placeholder="Lunch at a café, 3.500 KD, Food · an Uber, 2.000 KD, Transport · the phone bill, 8.000 KD, Bills" autocomplete="off">
+        <label for="quick">What did you spend?</label>
+        <textarea id="quick" rows="2" placeholder="Lunch at a café, 3.500 KD, Food" autocomplete="off" aria-describedby="quickHint"></textarea>
+        <p class="hint" id="quickHint" style="margin:0">One per line, or separated by ; or ·. Format: what, amount KD, category. Add “yesterday” or a date like 2026-11-03 to backdate.</p>
+        <div class="cats" id="catBtns" role="group" aria-label="Add a category to the line"></div>
       </div>
-      <button class="btn" type="submit">Add</button>
+      <button class="btn" type="submit" id="addBtn">Add</button>
       <p id="addMsg" class="msg" role="status"></p>
     </form>
   </div>
@@ -132,8 +152,9 @@ td.amt,th.amt{text-align:right;font-variant-numeric:tabular-nums;font-weight:600
       </div>
       <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>What</th><th>Category</th><th>Date</th><th class="amt">Amount</th></tr></thead>
+          <thead><tr><th>What</th><th>Category</th><th class="col-date">Date</th><th class="amt">Amount</th><th><span class="sr">Delete</span></th></tr></thead>
           <tbody id="rows"></tbody>
+          <tfoot id="foot"></tfoot>
         </table>
       </div>
       <p id="empty" class="empty" hidden>No expenses yet.</p>
@@ -160,10 +181,12 @@ td.amt,th.amt{text-align:right;font-variant-numeric:tabular-nums;font-weight:600
       <button class="btn" type="submit">Upload</button>
     </form>
     <p id="docMsg" class="msg" role="status"></p>
-    <table style="margin-top:8px">
+    <div style="overflow-x:auto;margin-top:8px">
+    <table>
       <thead><tr><th>Type</th><th>For</th><th>Warranty until</th><th>File</th></tr></thead>
       <tbody id="docRows"></tbody>
     </table>
+    </div>
   </div>
 </section>
 </main>
@@ -200,18 +223,28 @@ function td(content,cls){const t=document.createElement('td');if(cls)t.className
 
 function parseQuick(text){
   const out=[],bad=[];
-  for(const part of text.split(/[·\n]/).map(s=>s.trim()).filter(Boolean)){
-    const bits=part.split(',').map(s=>s.trim());
-    const amtIdx=bits.findIndex(b=>/^\d+([.,]\d{1,3})?\s*(kd|kwd)?$/i.test(b));
+  const other=[];
+  for(const part of text.split(/[·;\n]/).map(s=>s.trim()).filter(Boolean)){
+    // "3,500 KD" -> "3.500 KD" so the decimal comma is not read as a field separator
+    let bits=part.replace(/(\d),(\d)/g,'$1.$2').split(',').map(s=>s.trim());
+    let spent_on=todayStr();
+    bits=bits.filter(b=>{
+      if(/^today$/i.test(b))return false;
+      if(/^yesterday$/i.test(b)){const d=new Date();d.setDate(d.getDate()-1);spent_on=new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);return false}
+      if(/^\d{4}-\d{2}-\d{2}$/.test(b)&&!isNaN(Date.parse(b))){spent_on=b;return false}
+      return true;
+    });
+    const amtIdx=bits.findIndex(b=>/^\d+(\.\d{1,3})?\s*(kd|kwd)?$/i.test(b));
     if(amtIdx<1){bad.push(part);continue}
-    const amount=parseFloat(bits[amtIdx].replace(/[^\d.,]/g,'').replace(',','.'));
-    const rawCat=(bits[amtIdx+1]||'Other').toLowerCase();
-    const category=NAMES.find(n=>n.toLowerCase()===rawCat)||'Other';
+    const amount=parseFloat(bits[amtIdx]);
+    const rawCat=bits[amtIdx+1];
+    const category=NAMES.find(n=>n.toLowerCase()===(rawCat||'').toLowerCase())||'Other';
+    if(category==='Other'&&rawCat&&rawCat.toLowerCase()!=='other')other.push(rawCat);
     const title=bits.slice(0,amtIdx).join(', ').slice(0,120);
     if(!(amount>0)||!title){bad.push(part);continue}
-    out.push({title:title.charAt(0).toUpperCase()+title.slice(1),amount,category,spent_on:todayStr(),source:'web'});
+    out.push({title:title.charAt(0).toUpperCase()+title.slice(1),amount,category,spent_on,source:'web'});
   }
-  return {out,bad};
+  return {out,bad,other};
 }
 
 async function load(){
@@ -226,11 +259,11 @@ async function load(){
 function render(){
   const filter=$('catFilter').value;
   const list=state.expenses.filter(x=>!filter||x.category===filter);
-  const today=list.filter(x=>x.spent_on===todayStr());
+  const today=state.expenses.filter(x=>x.spent_on===todayStr());
   $('todayTotal').textContent=kd(today.reduce((a,x)=>a+Number(x.amount),0));
-  $('todayCount').textContent=today.length?`${today.length} expense${today.length>1?'s':''} today${filter?' in '+filter:''}`:'Nothing spent yet today.';
+  $('todayCount').textContent=today.length?`${today.length} expense${today.length>1?'s':''} today`:'Nothing spent yet today.';
 
-  const big=list.reduce((m,x)=>!m||Number(x.amount)>Number(m.amount)?x:m,null);
+  const big=state.expenses.reduce((m,x)=>!m||Number(x.amount)>Number(m.amount)?x:m,null);
   $('bigAmt').textContent=big?kd(big.amount):'—';
   const bw=$('bigWhat');bw.replaceChildren();
   if(big){bw.append(icon(big.category),document.createTextNode(`${big.title} · ${big.category}`))}else bw.textContent='Add an expense to see it here.';
@@ -238,11 +271,25 @@ function render(){
   const rows=$('rows');rows.replaceChildren();
   for(const x of list){
     const tr=document.createElement('tr');
-    tr.append(td(x.title),td(chip(x.category)),td(x.spent_on),td(kd(x.amount),'amt'));
+    const t=td(x.title);
+    const w=document.createElement('span');w.className='when hint';w.textContent=x.spent_on;t.append(w);
+    const c=td(chip(x.category));
+    c.querySelector('.chip').setAttribute('aria-label',x.category);
+    const del=document.createElement('button');del.type='button';del.className='icon-btn';del.setAttribute('aria-label',`Delete ${x.title}`);
+    del.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
+    del.addEventListener('click',()=>removeExpense(x));
+    tr.append(t,c,td(x.spent_on,'col-date'),td(kd(x.amount),'amt'),td(del));
     rows.append(tr);
   }
+  const foot=$('foot');foot.replaceChildren();
+  if(filter&&list.length){
+    const tr=document.createElement('tr');
+    tr.append(td(`${filter} total`),td(''),td('','col-date'),td(kd(list.reduce((a,x)=>a+Number(x.amount),0)),'amt'),td(''));
+    foot.append(tr);
+  }
+  $('empty').textContent=filter?`No ${filter} expenses yet.`:'No expenses yet.';
   $('empty').hidden=list.length>0;
-  drawPie(list);
+  drawPie(state.expenses);
 
   const sel=$('docExpense'),keep=sel.value;sel.replaceChildren(new Option('None',''));
   for(const x of state.expenses.slice(0,50))sel.append(new Option(`${x.title} — ${kd(x.amount)}`,x.id));
@@ -251,7 +298,7 @@ function render(){
   for(const d of state.docs){
     const ex=state.expenses.find(x=>x.id===d.expense_id);
     const tr=document.createElement('tr');
-    const a=document.createElement('a');a.href='#';a.textContent='Open';a.addEventListener('click',ev=>{ev.preventDefault();openDoc(d.file_path)});
+    const a=document.createElement('a');a.href='#';a.textContent='Open';a.setAttribute('aria-label',`Open ${d.kind==='invoice'?'invoice':'warranty'} for ${ex?ex.title:'unlinked expense'}`);a.addEventListener('click',ev=>{ev.preventDefault();openDoc(d.file_path)});
     tr.append(td(d.kind==='invoice'?'Invoice':'Warranty'),td(ex?ex.title:'—'),td(d.warranty_until||'—'),td(a));
     dr.append(tr);
   }
@@ -289,14 +336,38 @@ async function openDoc(path){
   window.open(data.signedUrl,'_blank','noopener');
 }
 
+async function removeExpense(x){
+  const m=$('addMsg');m.className='msg';
+  const {error}=await sb.from('expenses').delete().eq('id',x.id);
+  if(error){m.textContent='Could not delete. Please try again.';m.className='msg err';return}
+  m.textContent=`Deleted “${x.title}”. `;
+  const u=document.createElement('button');u.type='button';u.className='btn';u.textContent='Undo';
+  u.addEventListener('click',async()=>{
+    const {id,title,amount,category,spent_on,source}=x;
+    const r=await sb.from('expenses').insert({id,title,amount,category,spent_on,source});
+    m.textContent=r.error?'Could not undo.':`Restored “${title}”.`;m.className=r.error?'msg err':'msg';load();
+  });
+  m.append(u);load();
+}
+
+$('quick').addEventListener('keydown',ev=>{if(ev.key==='Enter'&&!ev.shiftKey){ev.preventDefault();$('addForm').requestSubmit()}});
+$('catBtns').append(...NAMES.map(n=>{
+  const b=document.createElement('button');b.type='button';b.className='cat-btn';b.append(icon(n),document.createTextNode(n));
+  b.addEventListener('click',()=>{const q=$('quick');q.value=q.value.replace(/[,\s]+$/,'')+', '+n;q.focus()});
+  return b;
+}));
+
 $('addForm').addEventListener('submit',async ev=>{
-  ev.preventDefault();const m=$('addMsg');m.className='msg';
-  const {out,bad}=parseQuick($('quick').value);
+  ev.preventDefault();const m=$('addMsg'),btn=$('addBtn');m.className='msg';
+  const {out,bad,other}=parseQuick($('quick').value);
   if(!out.length){m.textContent='Use: what, amount KD, category — e.g. “Uber, 2.000 KD, Transport”.';m.className='msg err';return}
+  btn.disabled=true;
   const {error}=await sb.from('expenses').insert(out);
+  btn.disabled=false;
   if(error){m.textContent='Could not save. Please try again.';m.className='msg err';return}
-  $('quick').value='';
-  m.textContent=`Added ${out.length}.`+(bad.length?` Skipped: ${bad.join(' · ')}`:'');
+  $('quick').value=bad.join('\n');
+  m.textContent=`Added ${out.length}.`+(other.length?` Unknown category (${other.join(', ')}) saved as Other.`:'')+(bad.length?` ${bad.length} line${bad.length>1?'s':''} not understood — left in the box so you can fix ${bad.length>1?'them':'it'}.`:'');
+  if(bad.length)m.className='msg err';
   load();
 });
 
