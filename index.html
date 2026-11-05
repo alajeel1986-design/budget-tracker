@@ -73,10 +73,27 @@ td.amt,th.amt{text-align:right;font-variant-numeric:tabular-nums;font-weight:600
 <body>
 <main class="wrap">
 
-<section id="app">
+<section id="auth" class="auth card" hidden>
+  <h1>Budget Tracker</h1>
+  <p class="hint">Sign in or register to track your spending in Kuwaiti dinar (KD).</p>
+  <form id="authForm" novalidate>
+    <div class="field"><label for="email">Email</label><input id="email" type="email" autocomplete="email" required></div>
+    <div class="field"><label for="password">Password (8+ characters)</label><input id="password" type="password" autocomplete="current-password" minlength="8" required></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn" type="submit" data-mode="in">Log in</button>
+      <button class="btn ghost" type="submit" data-mode="up">Register</button>
+    </div>
+    <p id="authMsg" class="msg" role="status"></p>
+  </form>
+</section>
+
+<section id="app" hidden>
   <header>
     <h1>Budget Tracker</h1>
-    <span class="hint">Amounts in Kuwaiti dinar (KD)</span>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <span class="hint" id="whoami"></span>
+      <button class="btn ghost" id="signOut" type="button">Log out</button>
+    </div>
   </header>
 
   <div class="hero">
@@ -155,7 +172,7 @@ td.amt,th.amt{text-align:right;font-variant-numeric:tabular-nums;font-weight:600
 const SUPABASE_URL='https://khvxpilusnfngivuvcru.supabase.co';
 const SUPABASE_KEY='sb_publishable_NNuoLm8mPwGx2NgfCaRG2g_J1o-9jAb';
 const BUCKET='invoices-warranties';
-const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:false}});
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
 const CATS={
   Food:{c:'--c-food',p:'M7 3v8M4 3v5a3 3 0 0 0 6 0V3M7 11v10M17 3c-2 2-3 5-3 8h3v10'},
@@ -170,7 +187,7 @@ const $=id=>document.getElementById(id);
 const kd=n=>Number(n).toLocaleString('en',{minimumFractionDigits:3,maximumFractionDigits:3})+' KD';
 const todayStr=()=>{const d=new Date();return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
 const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-const state={expenses:[],docs:[]};
+const state={user:null,expenses:[],docs:[]};
 
 function icon(cat){
   const m=CATS[cat]||CATS.Other,s=document.createElementNS('http://www.w3.org/2000/svg','svg');
@@ -290,7 +307,7 @@ $('docForm').addEventListener('submit',async ev=>{
   if(!f){m.textContent='Choose a file first.';m.className='msg err';return}
   if(f.size>10*1024*1024){m.textContent='File is over 10 MB.';m.className='msg err';return}
   const ext=(f.name.split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,5);
-  const path=`shared/${crypto.randomUUID()}.${ext}`;
+  const path=`${state.user.id}/${crypto.randomUUID()}.${ext}`;
   const up=await sb.storage.from(BUCKET).upload(path,f,{contentType:f.type});
   if(up.error){m.textContent='Upload failed. Check the file type.';m.className='msg err';return}
   const kind=$('docKind').value;
@@ -300,8 +317,23 @@ $('docForm').addEventListener('submit',async ev=>{
 });
 
 $('catFilter').addEventListener('change',render);
+$('signOut').addEventListener('click',()=>sb.auth.signOut());
+$('authForm').addEventListener('submit',async ev=>{
+  ev.preventDefault();const m=$('authMsg');m.className='msg';
+  const mode=ev.submitter?.dataset.mode||'in',email=$('email').value.trim(),password=$('password').value;
+  if(!email||password.length<8){m.textContent='Enter an email and a password of 8+ characters.';m.className='msg err';return}
+  const r=mode==='up'?await sb.auth.signUp({email,password}):await sb.auth.signInWithPassword({email,password});
+  if(r.error){m.textContent=r.error.message;m.className='msg err';return}
+  if(mode==='up'&&!r.data.session)m.textContent='Registered. Check your email to confirm, then log in.';
+});
+
 NAMES.forEach(n=>$('catFilter').append(new Option(n,n)));
-load();
+sb.auth.onAuthStateChange((_e,session)=>{
+  state.user=session?.user||null;
+  $('auth').hidden=!!state.user;$('app').hidden=!state.user;
+  if(state.user){$('whoami').textContent=state.user.email;load()}
+  else{state.expenses=[];state.docs=[]}
+});
 </script>
 </body>
 </html>
